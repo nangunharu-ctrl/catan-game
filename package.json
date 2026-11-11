@@ -1,0 +1,13 @@
+{
+  "name": "catan-mobile-8players",
+  "version": "2.0.0",
+  "description": "カタン オンライン（3〜8人、人数に応じてマップ・ルールが変化）",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node simulate.js"
+  },
+  "dependencies": {
+    "socket.io": "^4.7.5"
+  }
+}
