@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Catan Mobile 8-Players Edition</title>
+    <!-- Socket.io サーバー通信用ライブラリ -->
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        :root {
+            --bg-color: #1a1a2e;
+            --panel-bg: rgba(22, 33, 62, 0.95);
+            --accent-gold: #f39c12;
+            --text-main: #ffffff;
+            --border-color: #0f3460;
+            --btn-blue: #0984e3;
+            --btn-green: #00b894;
+            --btn-red: #d63031;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        .screen {
+            display: none;
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        .screen.active {
+            display: flex;
+            flex-direction: column;
+        }
+
+        #lobby-screen {
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+        }
+
+        .lobby-card {
+            background: var(--panel-bg);
+            border: 2px solid var(--accent-gold);
+            border-radius: 16px;
+            padding: 24px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            text-align: center;
+        }
+
+        .lobby-title {
+            font-size: 28px;
+            color: var(--accent-gold);
+            margin-bottom: 8px;
+            font-weight: bold;
+            letter-spacing: 2px;
+        }
+
+        .lobby-subtitle {
+            font-size: 14px;
+            color: #8a99ad;
+            margin-bottom: 24px;
+        }
+
+        .input-group {
+            margin-bottom: 16px;
+            text-align: left;
+        }
+
+        .input-group label {
+            display: block;
+            font-size: 12px;
+            color: #a4b0be;
+            margin-bottom: 6px;
+        }
+
+        .input-control {
+            width: 100%;
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            background: #0f172a;
+            color: #fff;
+            font-size: 16px;
+            outline: none;
+        }
+        .input-control:focus {
+            border-color: var(--accent-gold);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 8px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn-primary { background: var(--btn-blue); color: #fff; }
+        .btn-success { background: var(--btn-green); color: #fff; }
+        .btn-warning { background: var(--accent-gold); color: #000; }
+        .btn-danger { background: var(--btn-red); color: #fff; }
+        .btn:active { transform: scale(0.98); opacity: 0.9; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .room-players-list {
+            margin: 16px 0;
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+            padding: 12px;
+            max-height: 180px;
+            overflow-y: auto;
+        }
+        .player-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .player-color-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+
+        #game-screen {
+            position: relative;
+            background: #0d1b2a;
+        }
+
+        #game-canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .header-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 48px;
+            background: var(--panel-bg);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 12px;
+            z-index: 10;
+        }
+
+        .phase-badge {
+            background: var(--accent-gold);
+            color: #000;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .room-info {
+            font-size: 12px;
+            color: #a4b0be;
+        }
+
+        .players-bar {
+            position: absolute;
+            top: 48px;
+            left: 0;
+            right: 0;
+            height: 40px;
+            background: rgba(0, 0, 0, 0.6);
+            display: flex;
+            align-items: center;
+            overflow-x: auto;
+            padding: 0 8px;
+            gap: 8px;
+            z-index: 9;
+            scrollbar-width: none;
+        }
+        .players-bar::-webkit-scrollbar { display: none; }
+
+        .player-card-mini {
+            flex: 0 0 auto;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            border-left: 4px solid #fff;
+        }
+        .player-card-mini.active-turn {
+            background: rgba(243, 156, 18, 0.25);
+            box-shadow: 0 0 8px rgba(243, 156, 18, 0.5);
+        }
+
+        .bottom-ui {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: var(--panel-bg);
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            padding: 8px 12px 16px;
+            gap: 8px;
+            z-index: 10;
+        }
+
+        .resources-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 8px;
+            padding: 6px 10px;
+        }
+        .res-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-size: 10px;
+            gap: 2px;
+        }
+        .res-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 12px;
+        }
+        .res-wood { background: #27ae60; color: #fff; }
+        .res-brick { background: #d35400; color: #fff; }
+        .res-wheat { background: #f1c40f; color: #000; }
+        .res-wool { background: #2ecc71; color: #000; }
+        .res-ore { background: #7f8c8d; color: #fff; }
+        .res-count { font-weight: bold; font-size: 12px; }
+
+        .actions-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 6px;
+        }
+        .action-btn {
+            background: #1e293b;
+            border: 1px solid var(--border-color);
+            color: #fff;
+            padding: 10px 4px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: bold;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            cursor: pointer;
+        }
+        .action-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .modal-overlay {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .modal-overlay.active {
+            display: flex;
+        }
+        .modal-body {
+            background: var(--panel-bg);
+            border: 2px solid var(--accent-gold);
+            border-radius: 12px;
+            padding: 20px;
+            width: 100%;
+            max-width: 360px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        }
+        .modal-title {
+            font-size: 18px;
+            color: var(--accent-gold);
+            margin-bottom: 12px;
+            text-align: center;
+            font-weight: bold;
+        }
+        .modal-desc {
+            font-size: 13px;
+            color: #cbd5e1;
+            margin-bottom: 16px;
+            line-height: 1.4;
+            text-align: center;
+        }
+
+        #toast-container {
+            position: absolute;
+            top: 96px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 50;
+            pointer-events: none;
+            width: 90%;
+            max-width: 320px;
+        }
+        .toast {
+            background: rgba(15, 23, 42, 0.95);
+            border-left: 4px solid var(--accent-gold);
+            padding: 10px 14px;
+            border-radius: 6px;
+            font-size: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            animation: fadeIn 0.3s forwards;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .discard-selector {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        .discard-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(0,0,0,0.3);
+            padding: 6px 12px;
+            border-radius: 6px;
+        }
+        .counter-btn {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            border: none;
+            background: var(--btn-blue);
+            color: #fff;
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        .dice-result-overlay {
+            position: absolute;
+            top: 45%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            gap: 12px;
+            pointer-events: none;
+            z-index: 30;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .dice-result-overlay.show {
+            opacity: 1;
+        }
+        .dice {
+            width: 50px;
+            height: 50px;
+            background: #fff;
+            color: #000;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: bold;
+            box-shadow: 0 6px 16px rgba(0,0,0,0.6);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- LOBBY SCREEN -->
+    <div id="lobby-screen" class="screen active">
+        <div class="lobby-card">
+            <div class="lobby-title">CATAN MOBILE</div>
+            <div class="lobby-subtitle">8-Players Online Edition</div>
+            
+            <div id="lobby-menu">
+                <div class="input-group">
+                    <label>プレイヤー名</label>
+                    <input type="text" id="player-name-input" class="input-control" placeholder="名前を入力..." maxlength="10">
+                </div>
+                <button class="btn btn-primary" onclick="showCreateRoom()">部屋を作成する</button>
+                <button class="btn btn-success" onclick="showJoinRoom()">ルームコードで入室</button>
+            </div>
+
+            <div id="create-room-menu" style="display: none;">
+                <div class="input-group">
+                    <label>目標勝利点</label>
+                    <input type="number" id="target-score-input" class="input-control" value="10" min="10" max="12">
+                </div>
+                <button class="btn btn-warning" onclick="createRoomAction()">部屋を作成して待機</button>
+                <button class="btn btn-danger" onclick="backToLobbyMenu()">戻る</button>
+            </div>
+
+            <div id="join-room-menu" style="display: none;">
+                <div class="input-group">
+                    <label>ルームコード (6桁)</label>
+                    <input type="text" id="room-code-input" class="input-control" placeholder="例: 849201" maxlength="6">
+                </div>
+                <button class="btn btn-success" onclick="joinRoomAction()">参加する</button>
+                <button class="btn btn-danger" onclick="backToLobbyMenu()">戻る</button>
+            </div>
+
+            <div id="waiting-room-menu" style="display: none;">
+                <div style="font-size: 14px; color: #a4b0be; margin-bottom: 4px;">ルームコード</div>
+                <div id="display-room-code" style="font-size: 32px; font-weight: bold; color: var(--accent-gold); letter-spacing: 4px; margin-bottom: 12px;">------</div>
+                
+                <div class="room-players-list" id="room-players-list"></div>
+
+                <button class="btn btn-warning" id="start-game-btn" onclick="startGameAction()">ゲーム開始 (ホストのみ)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN GAME SCREEN -->
+    <div id="game-screen" class="screen">
+        <canvas id="game-canvas"></canvas>
+
+        <div class="header-bar">
+            <div class="phase-badge" id="current-phase-text">メインフェーズ</div>
+            <div class="room-info" id="game-room-code">ROOM: -----</div>
+        </div>
+
+        <div class="players-bar" id="players-status-bar"></div>
+
+        <div id="toast-container"></div>
+
+        <div class="dice-result-overlay" id="dice-overlay">
+            <div class="dice" id="dice1">1</div>
+            <div class="dice" id="dice2">1</div>
+        </div>
+
+        <div class="bottom-ui">
+            <div class="resources-bar">
+                <div class="res-item"><div class="res-icon res-wood">木</div><span class="res-count" id="count-wood">0</span></div>
+                <div class="res-item"><div class="res-icon res-brick">泥</div><span class="res-count" id="count-brick">0</span></div>
+                <div class="res-item"><div class="res-icon res-wheat">麦</div><span class="res-count" id="count-wheat">0</span></div>
+                <div class="res-item"><div class="res-icon res-wool">羊</div><span class="res-count" id="count-wool">0</span></div>
+                <div class="res-item"><div class="res-icon res-ore">鉄</div><span class="res-count" id="count-ore">0</span></div>
+            </div>
+
+            <div class="actions-grid">
+                <button class="action-btn" id="btn-roll" onclick="handleRollDice()">
+                    <span>🎲</span>
+                    <span>ダイス振る</span>
+                </button>
+                <button class="action-btn" id="btn-build" onclick="toggleBuildMenu()">
+                    <span>🏗️</span>
+                    <span>建設</span>
+                </button>
+                <button class="action-btn" id="btn-trade" onclick="openTradeModal()">
+                    <span>🔄</span>
+                    <span>交易</span>
+                </button>
+                <button class="action-btn" id="btn-buy-dev" onclick="buyDevelopmentCard()">
+                    <span>🃏</span>
+                    <span>発展カード</span>
+                </button>
+                <button class="action-btn" id="btn-end-turn" onclick="handleEndTurn()">
+                    <span>⏭️</span>
+                    <span>ターン終了</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: BURST DISCARD -->
+    <div class="modal-overlay" id="modal-discard">
+        <div class="modal-body">
+            <div class="modal-title">⚠️ バースト発生 (7の目)</div>
+            <div class="modal-desc" id="discard-desc">手札が8枚以上あるため、半分を廃棄してください。</div>
+            <div class="discard-selector" id="discard-selector"></div>
+            <button class="btn btn-danger" id="btn-confirm-discard" onclick="confirmDiscardAction()" disabled>廃棄を確定</button>
+        </div>
+    </div>
+
+    <!-- MODAL: BUILD MENU -->
+    <div class="modal-overlay" id="modal-build">
+        <div class="modal-body">
+            <div class="modal-title">建設オプション</div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                <button class="btn btn-primary" onclick="selectBuildOption('settlement')">開拓地 (木1, 泥1, 麦1, 羊1)</button>
+                <button class="btn btn-primary" onclick="selectBuildOption('city')">都市 (麦2, 鉄3)</button>
+                <button class="btn btn-primary" onclick="selectBuildOption('road')">街道 (木1, 土1)</button>
+                <button class="btn btn-danger" onclick="closeBuildMenu()">キャンセル</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+const socket = io();
+let mySocketId = null;
+const RES_TYPES = {
+  DESERT:{name:'砂漠',color:'#f39c12',res:null},
+  FOREST:{name:'森林',color:'#27ae60',res:'wood'},
+  HILL:{name:'丘陵',color:'#d35400',res:'brick'},
+  FIELD:{name:'耕作地',color:'#f1c40f',res:'wheat'},
+  PASTURE:{name:'牧草地',color:'#2ecc71',res:'wool'},
+  MOUNTAIN:{name:'山脈',color:'#7f8c8d',res:'ore'}
+};
+const RESOURCE_LABEL={wood:'木材',brick:'レンガ',wheat:'小麦',wool:'羊毛',ore:'鉱石'};
+let gameState={roomCode:'',isHost:false,myPlayerId:null,players:[],activePlayerIdx:0,phase:'LOBBY',board:{hexes:[],nodes:[],edges:[]}};
+let canvas,ctx,offsetX=0,offsetY=0,activeBuildMode=null;
+let selectedCounts={wood:0,brick:0,wheat:0,wool:0,ore:0};
+let discardTarget=0,discardSelected=0;
+
+socket.on('connect',()=>{mySocketId=socket.id;});
+function showToast(msg){
+  const c=document.getElementById('toast-container');if(!c)return;
+  const t=document.createElement('div');t.className='toast';t.innerText=msg;c.appendChild(t);
+  setTimeout(()=>t.remove(),3500);
+}
+function showCreateRoom(){
+  const name=document.getElementById('player-name-input').value.trim();
+  if(!name)return alert('名前を入力してください');
+  document.getElementById('lobby-menu').style.display='none';
+  document.getElementById('create-room-menu').style.display='block';
+}
+function showJoinRoom(){
+  const name=document.getElementById('player-name-input').value.trim();
+  if(!name)return alert('名前を入力してください');
+  document.getElementById('lobby-menu').style.display='none';
+  document.getElementById('join-room-menu').style.display='block';
+}
+function backToLobbyMenu(){
+  ['lobby-menu','create-room-menu','join-room-menu','waiting-room-menu'].forEach(id=>{
+    const e=document.getElementById(id);if(e)e.style.display=id==='lobby-menu'?'block':'none';
+  });
+}
+function createRoomAction(){
+  const name=document.getElementById('player-name-input').value.trim();
+  const targetScore=parseInt(document.getElementById('target-score-input').value,10)||10;
+  socket.emit('createRoom',{name,targetScore});
+}
+socket.on('roomCreated',({roomCode,player,roomState})=>{
+  gameState.roomCode=roomCode;gameState.isHost=true;gameState.myPlayerId=player.id;
+  gameState.players=roomState.players;
+  document.getElementById('create-room-menu').style.display='none';
+  document.getElementById('waiting-room-menu').style.display='block';
+  document.getElementById('display-room-code').innerText=roomCode;
+  renderLobbyPlayerList();
+});
+function joinRoomAction(){
+  const code=document.getElementById('room-code-input').value.trim();
+  const name=document.getElementById('player-name-input').value.trim();
+  if(code.length!==6)return alert('6桁のコードを入力してください');
+  socket.emit('joinRoom',{roomCode:code,name});
+}
+socket.on('joinedSuccess',({player,roomState})=>{
+  gameState.roomCode=roomState.roomCode;gameState.isHost=false;gameState.myPlayerId=player.id;
+  gameState.players=roomState.players;
+  document.getElementById('join-room-menu').style.display='none';
+  document.getElementById('waiting-room-menu').style.display='block';
+  document.getElementById('display-room-code').innerText=roomState.roomCode;
+  document.getElementById('start-game-btn').style.display='none';
+  renderLobbyPlayerList();
+});
+socket.on('roomUpdated',roomState=>{gameState.players=roomState.players;renderLobbyPlayerList();});
+function renderLobbyPlayerList(){
+  const list=document.getElementById('room-players-list');list.innerHTML='';
+  (gameState.players||[]).forEach((p,i)=>{
+    const item=document.createElement('div');item.className='player-item';
+    const left=document.createElement('div');
+    const dot=document.createElement('span');dot.className='player-color-dot';dot.style.background=p.color;
+    const name=document.createElement('b');name.textContent=p.name;
+    left.append(dot,name);if(p.id===mySocketId)left.append(' (あなた)');
+    const right=document.createElement('span');right.style.fontSize='11px';right.style.color='#a4b0be';right.textContent=i===0?'HOST':'READY';
+    item.append(left,right);list.appendChild(item);
+  });
+}
+function startGameAction(){socket.emit('startGame',{roomCode:gameState.roomCode});}
+socket.on('gameStarted',state=>{
+  gameState={...gameState,...state,myPlayerId:gameState.myPlayerId};
+  document.getElementById('lobby-screen').classList.remove('active');
+  document.getElementById('game-screen').classList.add('active');
+  document.getElementById('game-room-code').innerText=`ROOM: ${gameState.roomCode}`;
+  initUI();resizeCanvas();renderUI();
+});
+function getMyPlayer(){return gameState.players.find(p=>p.id===mySocketId)||gameState.players.find(p=>p.id===gameState.myPlayerId);}
+function handleRollDice(){socket.emit('rollDice',{roomCode:gameState.roomCode});}
+socket.on('diceRolled',({dice,total,isSeven,burstPlayers=[]})=>{
+  const overlay=document.getElementById('dice-overlay');
+  document.getElementById('dice1').innerText=dice[0];document.getElementById('dice2').innerText=dice[1];
+  overlay.classList.add('show');setTimeout(()=>overlay.classList.remove('show'),1800);
+  showToast(`🎲 サイコロの出目: ${total}`);
+  if(isSeven){
+    const myId=gameState.myPlayerId||mySocketId;
+    if(burstPlayers.includes(myId)){
+      const me=getMyPlayer();const totalCards=Object.values(me.resources||{}).reduce((a,b)=>a+b,0);
+      openDiscardModal(totalCards);
+    }else showToast('7が出ました。手札が8枚以上のプレイヤーは半分を廃棄します。');
+  }
+});
+function openDiscardModal(totalCards){
+  discardTarget=Math.floor(totalCards/2);discardSelected=0;
+  selectedCounts={wood:0,brick:0,wheat:0,wool:0,ore:0};
+  document.getElementById('discard-desc').innerText=`手札が${totalCards}枚あるため、${discardTarget}枚廃棄してください。`;
+  const selector=document.getElementById('discard-selector');selector.innerHTML='';
+  const res=getMyPlayer().resources||{};
+  Object.keys(selectedCounts).forEach(r=>{
+    const row=document.createElement('div');row.className='discard-row';
+    const label=document.createElement('span');label.textContent=`${RESOURCE_LABEL[r]} (所持:${res[r]||0})`;
+    const controls=document.createElement('div');controls.style.cssText='display:flex;align-items:center;gap:8px;';
+    const minus=document.createElement('button');minus.className='counter-btn';minus.textContent='−';minus.onclick=()=>adjustDiscard(r,-1);
+    const value=document.createElement('span');value.id=`discard-val-${r}`;value.textContent='0';
+    const plus=document.createElement('button');plus.className='counter-btn';plus.textContent='+';plus.onclick=()=>adjustDiscard(r,1);
+    controls.append(minus,value,plus);row.append(label,controls);selector.append(row);
+  });
+  document.getElementById('btn-confirm-discard').disabled=discardTarget!==0;
+  document.getElementById('modal-discard').classList.add('active');
+}
+function adjustDiscard(r,delta){
+  const have=(getMyPlayer().resources||{})[r]||0;
+  if(delta>0&&selectedCounts[r]<have&&discardSelected<discardTarget){selectedCounts[r]++;discardSelected++;}
+  if(delta<0&&selectedCounts[r]>0){selectedCounts[r]--;discardSelected--;}
+  document.getElementById(`discard-val-${r}`).textContent=selectedCounts[r];
+  document.getElementById('btn-confirm-discard').disabled=discardSelected!==discardTarget;
+}
+function confirmDiscardAction(){
+  socket.emit('discardResources',{roomCode:gameState.roomCode,discardedRes:selectedCounts});
+  document.getElementById('modal-discard').classList.remove('active');
+}
+function handleEndTurn(){
+  if(gameState.pairedStage==='PLAYER2'&&gameState.pairedPlayerIdx===gameState.players.findIndex(p=>p.id===mySocketId))
+    socket.emit('endPairedTurn',{roomCode:gameState.roomCode});
+  else socket.emit('endTurn',{roomCode:gameState.roomCode});
+}
+socket.on('gameStateSync',state=>{
+  const mine=gameState.myPlayerId||mySocketId;
+  gameState={...gameState,...state,myPlayerId:mine};
+  renderUI();
+  if(state.robberPending&&state.players[state.activePlayerIdx]?.id===mine)showToast('盗賊を移動する地形をタップしてください。');
+  if(state.phase==='SETUP'&&state.setupCurrent===state.players.findIndex(p=>p.id===mine)){
+    showToast(state.setupStep==='settlement'?'初期配置：開拓地を置いてください':'初期配置：開拓地に接する街道を置いてください');
+  }
+});
+socket.on('toast',showToast);
+socket.on('tradeOffer',offer=>{
+  const accept=confirm('交易提案が届きました。受け入れますか？');
+  socket.emit('respondTrade',{roomCode:gameState.roomCode,accept});
+});
+socket.on('gameOver',({winner})=>alert(`🎉 ${winner.name} が勝利しました！（${winner.score}点）`));
+socket.on('errorMsg',msg=>alert(msg));
+function initUI(){
+  canvas=document.getElementById('game-canvas');ctx=canvas.getContext('2d');
+  window.addEventListener('resize',resizeCanvas);canvas.addEventListener('click',handleCanvasClick);
+}
+function resizeCanvas(){
+  if(!canvas)return;
+  canvas.width=window.innerWidth*devicePixelRatio;canvas.height=window.innerHeight*devicePixelRatio;
+  canvas.style.width=window.innerWidth+'px';canvas.style.height=window.innerHeight+'px';
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+  offsetX=window.innerWidth/2;offsetY=window.innerHeight/2;renderCanvas();
+}
+function renderCanvas(){
+  if(!ctx||!gameState.board)return;
+  const w=window.innerWidth,h=window.innerHeight;
+  ctx.clearRect(0,0,w,h);ctx.fillStyle='#0d1b2a';ctx.fillRect(0,0,w,h);
+  const hexes=gameState.board.hexes||[];
+  const maxX=Math.max(1,...hexes.map(x=>Math.abs(x.cx))),maxY=Math.max(1,...hexes.map(x=>Math.abs(x.cy)));
+  const scale=Math.min((w-35)/(maxX*2+90),(h-210)/(maxY*2+90),1.35);
+  ctx.save();ctx.translate(offsetX,offsetY+5);ctx.scale(scale,scale);
+  hexes.forEach(hex=>{
+    const radius=40;ctx.beginPath();
+    for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/6,x=hex.cx+radius*Math.cos(a),y=hex.cy+radius*Math.sin(a);if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);}
+    ctx.closePath();ctx.fillStyle=RES_TYPES[hex.type]?.color||'#777';ctx.fill();ctx.strokeStyle='#1e293b';ctx.lineWidth=2;ctx.stroke();
+    if(hex.number){
+      ctx.beginPath();ctx.arc(hex.cx,hex.cy,12,0,Math.PI*2);ctx.fillStyle='#fff8dc';ctx.fill();
+      ctx.fillStyle=[6,8].includes(hex.number)?'#d63031':'#000';ctx.font='bold 12px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(hex.number,hex.cx,hex.cy);
+    }
+    if(hex.id===gameState.board.robber){ctx.font='20px sans-serif';ctx.fillText('♟',hex.cx+22,hex.cy+20);}
+  });
+  // Roads are drawn on the shared edges, so road connectivity matches the rules graph.
+  (gameState.board.edges||[]).forEach(edge=>{
+    if(!edge.owner)return;
+    const a=gameState.board.nodes[edge.a],b=gameState.board.nodes[edge.b];
+    const player=gameState.players.find(p=>p.id===edge.owner);
+    ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.strokeStyle=player?.color||'#fff';ctx.lineWidth=7;ctx.lineCap='round';ctx.stroke();
+  });
+  (gameState.board.nodes||[]).forEach(node=>{
+    if(!node.owner)return;
+    const player=gameState.players.find(p=>p.id===node.owner);
+    ctx.beginPath();ctx.arc(node.x,node.y,node.type==='city'?10:7,0,Math.PI*2);
+    ctx.fillStyle=player?.color||'#fff';ctx.fill();ctx.strokeStyle='#111';ctx.lineWidth=2;ctx.stroke();
+    if(node.type==='city'){ctx.fillStyle='#fff';ctx.font='bold 9px sans-serif';ctx.textAlign='center';ctx.fillText('C',node.x,node.y+3);}
+  });
+  ctx.restore();
+}
+function handleCanvasClick(e){
+  if(!gameState.board)return;
+  const rect=canvas.getBoundingClientRect(),scale=Math.min((window.innerWidth-35)/(Math.max(1,...gameState.board.hexes.map(x=>Math.abs(x.cx)))*2+90),(window.innerHeight-210)/(Math.max(1,...gameState.board.hexes.map(x=>Math.abs(x.cy)))*2+90),1.35);
+  const x=(e.clientX-offsetX)/scale,y=(e.clientY-(offsetY+5))/scale;
+  const me=gameState.myPlayerId||mySocketId;
+  if(gameState.phase==='SETUP'&&gameState.setupCurrent===gameState.players.findIndex(p=>p.id===me)){
+    if(gameState.setupStep==='settlement'){
+      const node=gameState.board.nodes.reduce((best,n)=>Math.hypot(n.x-x,n.y-y)<Math.hypot(best.x-x,best.y-y)?n:best,gameState.board.nodes[0]);
+      if(node&&Math.hypot(node.x-x,node.y-y)<18)socket.emit('setupPlaceSettlement',{roomCode:gameState.roomCode,nodeId:node.id});
+    }else{
+      const edge=gameState.board.edges.map(ed=>({...ed,dist:pointSegmentDistance(x,y,gameState.board.nodes[ed.a],gameState.board.nodes[ed.b])})).sort((a,b)=>a.dist-b.dist)[0];
+      if(edge&&edge.dist<14)socket.emit('setupPlaceRoad',{roomCode:gameState.roomCode,edgeId:edge.id});
+    }
+    return;
+  }
+  if(gameState.robberPending&&gameState.players[gameState.activePlayerIdx]?.id===me){
+    const hex=gameState.board.hexes.map(h=>({...h,dist:Math.hypot(h.cx-x,h.cy-y)})).sort((a,b)=>a.dist-b.dist)[0];
+    if(hex&&hex.dist<36){
+      const victims=[...new Set(hex.nodeIds.map(id=>gameState.board.nodes[id].owner).filter(id=>id&&id!==me))];
+      let targetPlayerId=null;
+      if(victims.length){const choices=victims.map(id=>gameState.players.find(p=>p.id===id)).filter(Boolean);targetPlayerId=choices[0]?.id;}
+      socket.emit('moveRobber',{roomCode:gameState.roomCode,hexId:hex.id,targetPlayerId});
+    }
+    return;
+  }
+  if(!activeBuildMode)return;
+  if(activeBuildMode==='road'){
+    const edge=gameState.board.edges.map(ed=>({...ed,dist:pointSegmentDistance(x,y,gameState.board.nodes[ed.a],gameState.board.nodes[ed.b])})).sort((a,b)=>a.dist-b.dist)[0];
+    if(edge&&edge.dist<14)socket.emit('buildStructure',{roomCode:gameState.roomCode,type:'road',edgeId:edge.id});
+  }else{
+    const node=gameState.board.nodes.reduce((best,n)=>Math.hypot(n.x-x,n.y-y)<Math.hypot(best.x-x,best.y-y)?n:best,gameState.board.nodes[0]);
+    if(node&&Math.hypot(node.x-x,node.y-y)<18)socket.emit('buildStructure',{roomCode:gameState.roomCode,type:activeBuildMode,nodeId:node.id});
+  }
+  activeBuildMode=null;
+}
+function pointSegmentDistance(px,py,a,b){
+  const dx=b.x-a.x,dy=b.y-a.y,t=Math.max(0,Math.min(1,((px-a.x)*dx+(py-a.y)*dy)/(dx*dx+dy*dy)));
+  return Math.hypot(px-(a.x+t*dx),py-(a.y+t*dy));
+}
+function toggleBuildMenu(){document.getElementById('modal-build').classList.add('active');}
+function closeBuildMenu(){document.getElementById('modal-build').classList.remove('active');}
+function selectBuildOption(type){closeBuildMenu();activeBuildMode=type;showToast(type==='road'?'街道を建設する辺をタップしてください':'建設する交差点をタップしてください');}
+function openTradeModal(){
+  const give=prompt('支払う資源 (wood/brick/wheat/wool/ore)');
+  if(!give)return;const get=prompt('受け取る資源 (wood/brick/wheat/wool/ore)');
+  if(!get)return;const ratio=Number(prompt('交換比率（通常4、港3または2）','4'));
+  socket.emit('bankTrade',{roomCode:gameState.roomCode,give,get,ratio});
+}
+function buyDevelopmentCard(){socket.emit('buyDevelopment',{roomCode:gameState.roomCode});}
+function renderUI(){
+  const me=getMyPlayer(),resources=gameState.myResources||me?.resources||{};
+  ['wood','brick','wheat','wool','ore'].forEach(r=>{
+    const id={wood:'wood',brick:'brick',wheat:'wheat',wool:'wool',ore:'ore'}[r];
+    document.getElementById(`count-${id}`).innerText=resources[r]||0;
+  });
+  const bar=document.getElementById('players-status-bar');bar.innerHTML='';
+  gameState.players.forEach((p,i)=>{
+    const active=i===gameState.activePlayerIdx,paired=i===gameState.pairedPlayerIdx&&gameState.pairedStage==='PLAYER2';
+    const card=document.createElement('div');card.className=`player-card-mini ${active||paired?'active-turn':''}`;card.style.borderLeftColor=p.color;
+    const name=document.createElement('b');name.textContent=p.name;
+    const score=document.createElement('span');score.textContent=` 🏆${p.score}`;
+    if(paired)score.textContent+=' 追加建設';
+    card.append(name,score);bar.append(card);
+  });
+  const phaseText=gameState.phase==='SETUP'?'初期配置':gameState.phase==='GAME_OVER'?'ゲーム終了':`${gameState.players[gameState.activePlayerIdx]?.name||''} のターン`;
+  document.getElementById('current-phase-text').innerText=phaseText;
+  const isP1=gameState.players[gameState.activePlayerIdx]?.id===me?.id;
+  const isP2=gameState.players[gameState.pairedPlayerIdx]?.id===me?.id&&gameState.pairedStage==='PLAYER2';
+  document.getElementById('btn-roll').disabled=!isP1||gameState.phase!=='MAIN'||gameState.turnRolled;
+  document.getElementById('btn-end-turn').disabled=(!isP1&&!isP2)||gameState.phase!=='MAIN'||!gameState.turnRolled;
+  document.getElementById('btn-end-turn').querySelector('span:last-child').textContent=isP2?'追加建設終了':'ターン終了';
+  document.getElementById('btn-build').disabled=(!isP1&&!isP2)||gameState.phase!=='MAIN'||!gameState.turnRolled;
+  document.getElementById('btn-trade').disabled=!isP1||gameState.phase!=='MAIN'||!gameState.turnRolled;
+  document.getElementById('btn-buy-dev').disabled=!isP1||gameState.phase!=='MAIN'||!gameState.turnRolled;
+  renderCanvas();
+}
+</script>
+</body>
+</html>
